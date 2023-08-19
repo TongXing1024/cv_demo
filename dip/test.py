@@ -78,6 +78,7 @@ def get_global_coordinate_2(img):
     cv.imshow('img', img)
     cv.waitKey(0)
 
+    print("这是一个策划i")
 
 
 if __name__ == '__main__':
