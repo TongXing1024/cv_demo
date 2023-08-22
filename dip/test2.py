@@ -1,7 +1,6 @@
-"""
-@Time ： 2023/7/17 15:53
-@Author ： 佟星
-"""
+# @Time    : 2023/8/21 16:43
+# @Author  : TONGXING
+
 import matplotlib.pyplot as plt
 import cv2 as cv
 import matplotlib
@@ -18,6 +17,7 @@ up_roi_points = []
 down_roi_points = []
 # 定义下点列表，存储真实下点
 down_points = []
+
 
 def get_Line():
     """
@@ -58,6 +58,44 @@ def get_Line():
     plt.imshow(img[:, :, ::-1])
     plt.title('img')
     plt.show()
+
+
+def get_top_points(img):
+    # 读取裁剪好的图像
+    # img = cv.imread('reservoir/img555.jpg', cv.IMREAD_COLOR)
+    # 转换为灰度图
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    # 高斯滤波
+    blur = cv.GaussianBlur(gray, (3, 3), 0)
+    # 二值化
+    ret, binary = cv.threshold(blur, 180, 255, cv.THRESH_BINARY)
+    # 显示二值化的结果
+    plt.subplot(121)
+    plt.imshow(binary, cmap='gray')
+    plt.title('binary')
+    # 腐蚀 让图像中高亮部分收缩
+    kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
+    binary = cv.erode(binary, kernel)
+    # 膨胀  让图像中高亮部分扩张
+    kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    binary = cv.dilate(binary, kernel)
+    # 生成一个与原图像大小相同的全黑图像
+    new_img = np.zeros(binary.shape, np.uint8)
+    height, width = binary.shape
+    height_value = int(height * 0.33)
+    new_img[0:height_value, :] = binary[0:height_value, :]
+    # 获取图像中的质心坐标  此处调用了ImageProcessC类
+    img_pro = ImageProcessC()
+    center_point = img_pro.get_center_point(new_img)
+    # 在原图上画出找出的点，并显示
+    cv.circle(img, (center_point[0][0], center_point[0][1]), 1, (0, 0, 255), 1)
+    return center_point[0]
+    # 显示图像
+    # plt.subplot(122)
+    # plt.imshow(img[:, :, ::-1])
+    # plt.title('res')
+    # plt.show()
+
 
 def get_bottom_points():
     img = cv.imread('reservoir/img_roi.jpg', cv.IMREAD_COLOR)
@@ -122,50 +160,14 @@ def get_bottom_points():
     plt.imshow(img[:, :, ::-1])
     plt.title('res')
     plt.show()
-def get_top_points(img):
-    # 读取裁剪好的图像
-    # img = cv.imread('reservoir/img555.jpg', cv.IMREAD_COLOR)
-    # 转换为灰度图
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    # 高斯滤波
-    blur = cv.GaussianBlur(gray, (3, 3), 0)
-    # 二值化
-    ret, binary = cv.threshold(blur, 180, 255, cv.THRESH_BINARY)
-    # 显示二值化的结果
-    plt.subplot(121)
-    plt.imshow(binary, cmap='gray')
-    plt.title('binary')
-    # 腐蚀 让图像中高亮部分收缩
-    kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
-    binary = cv.erode(binary, kernel)
-    # 膨胀  让图像中高亮部分扩张
-    kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
-    binary = cv.dilate(binary, kernel)
-    # 生成一个与原图像大小相同的全黑图像
-    new_img = np.zeros(binary.shape, np.uint8)
-    height, width = binary.shape
-    height_value = int(height * 0.33)
-    new_img[0:height_value, :] = binary[0:height_value, :]
-    # 获取图像中的质心坐标  此处调用了ImageProcessC类
-    img_pro = ImageProcessC()
-    center_point = img_pro.get_center_point(new_img)
-    # 在原图上画出找出的点，并显示
-    cv.circle(img, (center_point[0][0], center_point[0][1]), 1, (0, 0, 255), 1)
-    return center_point[0]
-    # 显示图像
-    # plt.subplot(122)
-    # plt.imshow(img[:, :, ::-1])
-    # plt.title('res')
-    # plt.show()
-
-
-
 
 
 def points_process():
     """
     此函数拿到yolo检测到的点以后，对其进行处理，使其符合画矩形的要求，提取出感兴趣区域
     """
+    # 存储最终的坐标点
+    res_points = []
     # 上点
     x_up = [185, 543, 821, 1050, 1198, 1405]
     y_up = [512, 552, 566, 576, 571, 609]
@@ -174,43 +176,44 @@ def points_process():
     x_down = [259, 603, 872, 1076, 1226, 1427]
     y_down = [749, 762, 749, 736, 742, 704]
     # 由于检测的坐标与真实的坐标有一定的偏差，所以需要对检测的坐标进行修正（下点的y坐标加30）
-    y_down = [i + 30 for i in y_down] # 下点的y坐标加30
+    y_down = [i + 30 for i in y_down]  # 下点的y坐标加30
     points_down = np.column_stack((x_down, y_down))
     # 处理这些点,使其符合画矩形的要求
     points_up[:, 0] -= 10
     points_down[:, 0] += 10
-    # 把最终坐标添加到列表中
-    up_roi_points.append(points_up)
-    down_roi_points.append(points_down)
-    return up_roi_points, down_roi_points
+    # 把最终坐标添加到res_points中
+    res_points.append(points_up)
+    res_points.append(points_down)
+    return res_points
 
 
-# def get_roi(img):
-#     """
-#     截取感兴趣区域
-#     img为水尺原图
-#     """
-#     res_points = points_process()
-#     # 获取第二根柱子的左上右下点坐标
-#     up_p = res_points[0][1]
-#     down_p = res_points[1][1]
-#     up_roi_points.append(up_p)
-#     down_roi_points.append(down_p)
-#     # 生成一个跟原图像大小相同的全黑图像
-#     # new_img = np.zeros(img.shape, np.uint8)
-#     # 裁剪
-#     new_img = img[up_p[1]:down_p[1], up_p[0]:down_p[0]]
-#     # 显示图像
-#     # cv.imshow('img', new_img)
-#     # cv.waitKey(0)
-#     return new_img
-
-def draw_up_points(img):
+def get_roi(img):
     """
-    把检测到的点画在原图上
+    截取感兴趣区域
+    img为水尺原图
     """
+    res_points = points_process()
+    # 获取第二根柱子的左上右下点坐标
+    up_p = res_points[0][1]
+    down_p = res_points[1][1]
+    up_roi_points.append(up_p)
+    down_roi_points.append(down_p)
+    # 生成一个跟原图像大小相同的全黑图像
+    # new_img = np.zeros(img.shape, np.uint8)
+    # 裁剪
+    new_img = img[up_p[1]:down_p[1], up_p[0]:down_p[0]]
+    # 显示图像
+    # cv.imshow('img', new_img)
+    # cv.waitKey(0)
+    return new_img
+
+
+def draw_up_points():
     # 声明全局变量
     global up_points
+    # 读取图像
+    img = cv.imread('reservoir/img_origin.jpg', cv.IMREAD_COLOR)
+    get_roi(img)
     # 读取裁剪好的图像
     img1 = cv.imread('reservoir/img_roi.jpg', cv.IMREAD_COLOR)
     # 获取上点
@@ -226,21 +229,4 @@ def draw_up_points(img):
 
 
 if __name__ == '__main__':
-    # 读取图像
-    img = cv.imread('reservoir/img_origin.jpg', cv.IMREAD_COLOR)
-    # 得到ROI区域的点(左上，右下)
-    up_roi_points, down_roi_points =  points_process()
-    # 读取裁剪好的图像
-    img1 = cv.imread('reservoir/img_roi.jpg', cv.IMREAD_COLOR)
-    # 得到上点
-    up_points.append(get_top_points(img1))
-    # 转换成numpy数组
-    up_points = np.array(up_points)
-    up_roi_points = np.array(up_roi_points)
-    # 对应元素相加,获取点在全图的位置
-    up_points = np.add(up_points, up_roi_points[0][1])
-    # 画点
-    cv.circle(img, (up_points[0][0], up_points[0][1]), 5, (0, 0, 255), 1)
-    # 显示图像
-    cv.imshow('img', img)
-    cv.waitKey(0)
+    draw_up_points()
