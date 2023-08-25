@@ -12,12 +12,26 @@ matplotlib.use('TkAgg')
 
 # 定义上点列表，存储真实上点
 up_points = []
-# 定义上点列表，存储ROI（感兴趣区域）左上点
-up_roi_points = []
-# 定义上点列表，存储ROI（感兴趣区域）右下点
-down_roi_points = []
 # 定义下点列表，存储真实下点
 down_points = []
+
+
+def get_center_point(img):
+    # 创建数组保存质心坐标
+    center_point = []
+    # 如果是彩色图像，转换为灰度图像
+    if len(img.shape) > 2:
+        img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        print("1111")
+    else:
+        img = img
+    # 计算图像灰度重心
+    M = cv.moments(img)
+    cX = int(M["m10"] / M["m00"])
+    cY = int(M["m01"] / M["m00"])
+    center_point.append([cX, cY])
+    return center_point
+
 
 def get_Line():
     """
@@ -59,6 +73,7 @@ def get_Line():
     plt.title('img')
     plt.show()
 
+
 def get_bottom_points():
     img = cv.imread('reservoir/img_roi.jpg', cv.IMREAD_COLOR)
     # 把裁剪好的图像转换为灰度图
@@ -87,7 +102,7 @@ def get_bottom_points():
     plt.title('img_origin')
     # 拿到非0点的坐标（过滤边缘前）
     points = np.argwhere(edges != 0)
-    # 遍历每个点
+    # 遍历每个点的相邻点，此处的策略为：如果此点的正上方的点为白色，则此点为黑色，否则为白色
     for point in points:
         # 判断此点是否先黑后白
         if dilate[point[0] - 2, point[1]] == 255:
@@ -96,7 +111,7 @@ def get_bottom_points():
             edges[point[0], point[1]] = 255
     # 拿到非0点的坐标（过滤边缘后）
     points = np.argwhere(edges != 0)
-    # 拿到第一列的最大值
+    # 拿到第一列的最大值（边缘线条的最低点）
     max_point = np.max(points[:, 0])
     print(max_point)
     # 判断是否有多个最大值，如果有，取中间的那个
@@ -122,11 +137,21 @@ def get_bottom_points():
     plt.imshow(img[:, :, ::-1])
     plt.title('res')
     plt.show()
+
+
 def get_top_points(img):
+    """
+    此函数用于获取水尺上的点
+    img:裁剪好的图像
+    返回值：水尺上的点
+    """
     # 读取裁剪好的图像
     # img = cv.imread('reservoir/img555.jpg', cv.IMREAD_COLOR)
-    # 转换为灰度图
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    # 如果是彩色图像，转换为灰度图像
+    if len(img.shape) > 2:
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    else:
+        gray = img
     # 高斯滤波
     blur = cv.GaussianBlur(gray, (3, 3), 0)
     # 二值化
@@ -146,26 +171,30 @@ def get_top_points(img):
     height, width = binary.shape
     height_value = int(height * 0.33)
     new_img[0:height_value, :] = binary[0:height_value, :]
-    # 获取图像中的质心坐标  此处调用了ImageProcessC类
-    img_pro = ImageProcessC()
-    center_point = img_pro.get_center_point(new_img)
-    # 在原图上画出找出的点，并显示
-    cv.circle(img, (center_point[0][0], center_point[0][1]), 1, (0, 0, 255), 1)
+    # 获取图像灰度重心
+    center_point = []
+    M = cv.moments(new_img)
+    # 判断是否有质心
+    if M["m00"] == 0:
+        print('没有检测到质心')
+        cX = 10
+        cY = 20
+    else:
+        cX = int(M["m10"] / M["m00"])
+        cY = int(M["m01"] / M["m00"])
+    center_point.append([cX, cY])
+    # 此时返回的值就是[x,y]坐标的形式，而不是索引的形式
     return center_point[0]
-    # 显示图像
-    # plt.subplot(122)
-    # plt.imshow(img[:, :, ::-1])
-    # plt.title('res')
-    # plt.show()
-
-
-
 
 
 def points_process():
     """
     此函数拿到yolo检测到的点以后，对其进行处理，使其符合画矩形的要求，提取出感兴趣区域
     """
+    # 定义上点列表，存储ROI（感兴趣区域）左上点
+    up_roi_points = []
+    # 定义上点列表，存储ROI（感兴趣区域）右下点
+    down_roi_points = []
     # 上点
     x_up = [185, 543, 821, 1050, 1198, 1405]
     y_up = [512, 552, 566, 576, 571, 609]
@@ -174,7 +203,7 @@ def points_process():
     x_down = [259, 603, 872, 1076, 1226, 1427]
     y_down = [749, 762, 749, 736, 742, 704]
     # 由于检测的坐标与真实的坐标有一定的偏差，所以需要对检测的坐标进行修正（下点的y坐标加30）
-    y_down = [i + 30 for i in y_down] # 下点的y坐标加30
+    y_down = [i + 30 for i in y_down]  # 下点的y坐标加30
     points_down = np.column_stack((x_down, y_down))
     # 处理这些点,使其符合画矩形的要求
     points_up[:, 0] -= 10
@@ -182,28 +211,34 @@ def points_process():
     # 把最终坐标添加到列表中
     up_roi_points.append(points_up)
     down_roi_points.append(points_down)
+    # 转换成numpy数组
+    up_roi_points = np.array(up_roi_points)
+    down_roi_points = np.array(down_roi_points)
     return up_roi_points, down_roi_points
 
 
-# def get_roi(img):
-#     """
-#     截取感兴趣区域
-#     img为水尺原图
-#     """
-#     res_points = points_process()
-#     # 获取第二根柱子的左上右下点坐标
-#     up_p = res_points[0][1]
-#     down_p = res_points[1][1]
-#     up_roi_points.append(up_p)
-#     down_roi_points.append(down_p)
-#     # 生成一个跟原图像大小相同的全黑图像
-#     # new_img = np.zeros(img.shape, np.uint8)
-#     # 裁剪
-#     new_img = img[up_p[1]:down_p[1], up_p[0]:down_p[0]]
-#     # 显示图像
-#     # cv.imshow('img', new_img)
-#     # cv.waitKey(0)
-#     return new_img
+def get_roi(img, up_roi_points, down_roi_points):
+    """
+    此函数用于裁剪感兴趣区域
+    img:原图像
+    up_roi_points:上点
+    down_roi_points:下点
+    返回值：裁剪后的图像（矩阵数组）
+    """
+    # 定义一个矩阵数组，用于存储裁剪后的图像
+    img_roi = []
+    # 遍历每个点
+    for i in range(len(up_roi_points[0])):
+        # 裁剪
+        img_roi.append(
+            img[up_roi_points[0][i][1]:down_roi_points[0][i][1], up_roi_points[0][i][0]:down_roi_points[0][i][0]])
+    # 显示裁剪后的图像
+    # for i in range(len(img_roi)):
+    #     cv.imshow('img_roi', img_roi[i])
+    #     cv.waitKey(0)
+    #     cv.destroyAllWindows()
+    return img_roi
+
 
 def draw_up_points(img):
     """
@@ -216,7 +251,7 @@ def draw_up_points(img):
     # 获取上点
     up_points.append(get_top_points(img1))
     # 对应元素相加,获取点在全图的位置
-    up_points = np.add(up_points, up_roi_points)
+    # up_points = np.add(up_points, up_roi_points)
     print(up_points)
     # 画点
     cv.circle(img, (up_points[0][0], up_points[0][1]), 5, (0, 0, 255), 1)
@@ -225,22 +260,49 @@ def draw_up_points(img):
     cv.waitKey(0)
 
 
-if __name__ == '__main__':
-    # 读取图像
-    img = cv.imread('reservoir/img_origin.jpg', cv.IMREAD_COLOR)
-    # 得到ROI区域的点(左上，右下)
-    up_roi_points, down_roi_points =  points_process()
-    # 读取裁剪好的图像
-    img1 = cv.imread('reservoir/img_roi.jpg', cv.IMREAD_COLOR)
-    # 得到上点
-    up_points.append(get_top_points(img1))
+def get_up_lineParams(img):
+    """
+    img:原图
+    """
+    global up_points
+    # 得到处理后ROI区域的点(左上，右下)
+    up_roi_points, down_roi_points = points_process()
+    # 得到裁剪后的图像
+    img_roi = get_roi(img, up_roi_points, down_roi_points)
+    # 遍历图像，画上点
+    for i in range(len(img_roi)):
+        up_points.append(get_top_points(img_roi[i]))
     # 转换成numpy数组
     up_points = np.array(up_points)
-    up_roi_points = np.array(up_roi_points)
     # 对应元素相加,获取点在全图的位置
-    up_points = np.add(up_points, up_roi_points[0][1])
-    # 画点
-    cv.circle(img, (up_points[0][0], up_points[0][1]), 5, (0, 0, 255), 1)
+    up_points = np.add(up_points, up_roi_points[0])
+    # 把这些点拟合成直线
+    lineParams = cv.fitLine(up_points, cv.DIST_L2, 0, 0.01, 0.01)
+    # 返回直线参数
+    return lineParams
+
+def draw_line(img):
+    lineParams = get_up_lineParams(img)
+    a = lineParams[0]
+    b = lineParams[1]  # (a,b)为直线的方向向量
+    c = lineParams[2]
+    d = lineParams[3]  # (c,d)为直线上的一点
+    # 由方向向量和直线上的一点求直线的斜率
+    k = b / a
+    # 由方向向量和直线上的一点求直线的截距
+    d = d - k * c
+    print(f"故直线的方程为：y={k}x+{d}")
+    # 随机取直线上的两点，画出直线
+    x1 = 1
+    y1 = int((k * x1 + d)[0])
+    x2 = 2000
+    y2 = int((k * x2 + d)[0])
+    cv.line(img, (x1, y1), (x2, y2), (0, 255, 0))
     # 显示图像
     cv.imshow('img', img)
     cv.waitKey(0)
+
+
+if __name__ == '__main__':
+    img = cv.imread("reservoir/img_origin2.jpg",cv.IMREAD_COLOR)
+    draw_line(img)
