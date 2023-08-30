@@ -15,8 +15,8 @@ up_points = []
 # 定义下点列表，存储真实下点
 down_points = []
 
-
-def get_center_point(img):
+# 此函数用于获取灰度重心
+def get_gray_center_point(img):
     # 创建数组保存质心坐标
     center_point = []
     # 如果是彩色图像，转换为灰度图像
@@ -74,10 +74,11 @@ def get_Line():
     plt.show()
 
 
-def get_bottom_points():
-    img = cv.imread('reservoir/img_roi.jpg', cv.IMREAD_COLOR)
-    # 把裁剪好的图像转换为灰度图
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+def get_down_points(img):
+    if len(img.shape) > 2:
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    else:
+        gray = img
     # 高斯滤波
     blur = cv.GaussianBlur(gray, (3, 3), 0)
     # 二值化
@@ -96,10 +97,6 @@ def get_bottom_points():
     new_img[height_value:, :] = dilate[height_value:, :]
     # 边缘检测
     edges = cv.Canny(new_img, 100, 200)
-    # 显示图像
-    plt.subplot(141)
-    plt.imshow(img[:, :, ::-1])
-    plt.title('img_origin')
     # 拿到非0点的坐标（过滤边缘前）
     points = np.argwhere(edges != 0)
     # 遍历每个点的相邻点，此处的策略为：如果此点的正上方的点为白色，则此点为黑色，否则为白色
@@ -112,34 +109,23 @@ def get_bottom_points():
     # 拿到非0点的坐标（过滤边缘后）
     points = np.argwhere(edges != 0)
     # 拿到第一列的最大值（边缘线条的最低点）
-    max_point = np.max(points[:, 0])
-    print(max_point)
+    max_row_point = np.max(points[:, 0])
     # 判断是否有多个最大值，如果有，取中间的那个
-    if len(np.argwhere(points[:, 0] == max_point)) > 1:
-        # 拿到这些点的坐标
-        max_points = points[np.argwhere(points[:, 0] == max_point)]
-        # 取中间的那个
-        max_point = max_points[len(max_points) // 2][0]
+    if len(np.argwhere(points[:, 0] == max_row_point)) > 1:
+        # 拿到这些点的索引
+        max_points = points[np.argwhere(points[:, 0] == max_row_point)]
+        # 取中间的那个点的索引
+        max_point = max_points[len(max_points) // 2]
+        max_point = max_point[0]
     else:
-        max_point = max_point
-    # 画出max_point
-    cv.circle(img, (max_point[1], max_point[0]), 1, (0, 0, 255), 1)
-    # 显示腐蚀膨胀的结果
-    plt.subplot(142)
-    plt.imshow(dilate, cmap='gray')
-    plt.title('dilate')
-    # 显示边缘
-    plt.subplot(143)
-    plt.imshow(edges, cmap='gray')
-    plt.title('edges')
-    # 把边缘点画到原图上
-    plt.subplot(144)
-    plt.imshow(img[:, :, ::-1])
-    plt.title('res')
-    plt.show()
+        max_point = points[np.argwhere(points[:, 0] == max_row_point)]
+        max_point = max_point[0][0]
+    # 把max_point的第一列和第二列的值互换
+    max_point = [max_point[1], max_point[0]]
+    return max_point
 
 
-def get_top_points(img):
+def get_up_points(img):
     """
     此函数用于获取水尺上的点
     img:裁剪好的图像
@@ -156,10 +142,6 @@ def get_top_points(img):
     blur = cv.GaussianBlur(gray, (3, 3), 0)
     # 二值化
     ret, binary = cv.threshold(blur, 180, 255, cv.THRESH_BINARY)
-    # 显示二值化的结果
-    plt.subplot(121)
-    plt.imshow(binary, cmap='gray')
-    plt.title('binary')
     # 腐蚀 让图像中高亮部分收缩
     kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
     binary = cv.erode(binary, kernel)
@@ -176,7 +158,6 @@ def get_top_points(img):
     M = cv.moments(new_img)
     # 判断是否有质心
     if M["m00"] == 0:
-        print('没有检测到质心')
         cX = 10
         cY = 20
     else:
@@ -249,7 +230,7 @@ def draw_up_points(img):
     # 读取裁剪好的图像
     img1 = cv.imread('reservoir/img_roi.jpg', cv.IMREAD_COLOR)
     # 获取上点
-    up_points.append(get_top_points(img1))
+    up_points.append(get_up_points(img1))
     # 对应元素相加,获取点在全图的位置
     # up_points = np.add(up_points, up_roi_points)
     print(up_points)
@@ -261,9 +242,6 @@ def draw_up_points(img):
 
 
 def get_up_lineParams(img):
-    """
-    img:原图
-    """
     global up_points
     # 得到处理后ROI区域的点(左上，右下)
     up_roi_points, down_roi_points = points_process()
@@ -271,18 +249,51 @@ def get_up_lineParams(img):
     img_roi = get_roi(img, up_roi_points, down_roi_points)
     # 遍历图像，画上点
     for i in range(len(img_roi)):
-        up_points.append(get_top_points(img_roi[i]))
+        up_points.append(get_up_points(img_roi[i]))
     # 转换成numpy数组
     up_points = np.array(up_points)
     # 对应元素相加,获取点在全图的位置
     up_points = np.add(up_points, up_roi_points[0])
+    # 取第二个到最后一个点
+    up_points = up_points[1:]
     # 把这些点拟合成直线
-    lineParams = cv.fitLine(up_points, cv.DIST_L2, 0, 0.01, 0.01)
+    up_lineParams = cv.fitLine(up_points, cv.DIST_L2, 0, 0.01, 0.01)
     # 返回直线参数
-    return lineParams
+    return up_lineParams
 
-def draw_line(img):
-    lineParams = get_up_lineParams(img)
+
+def get_down_lineParams(img):
+    global down_points
+    # 得到处理后ROI区域的点(左上，右下)
+    up_roi_points, down_roi_points = points_process()
+    # 得到裁剪后的图像
+    img_roi = get_roi(img, up_roi_points, down_roi_points)
+    # 取前5个，因为最后一个检测不到，而且会引入许多噪声
+    img_roi = img_roi[0:5]
+    # 得到下点
+    for i in range(len(img_roi)):
+        down_points.append(get_down_points(img_roi[i]))
+    # 转换成numpy数组
+    down_points = np.array(down_points)
+    # 对应上述前五个，这里也取前5个
+    up_roi_points = up_roi_points[0][0:5]
+    # 对应元素相加,获取点在全图的位置
+    down_points = np.add(down_points, up_roi_points)
+    # 取第二个到第四个点
+    down_points = down_points[1:4]
+    # 把这些点拟合成直线
+    down_line_Params = cv.fitLine(down_points, cv.DIST_L2, 0, 0.01, 0.01)
+    # 返回直线参数
+    return down_line_Params
+
+
+def draw_line(img, lineParams,color):
+    """
+    此函数用于画出直线
+    img:原图
+    lineParams:直线参数
+    color:直线颜色
+    """
     a = lineParams[0]
     b = lineParams[1]  # (a,b)为直线的方向向量
     c = lineParams[2]
@@ -297,12 +308,18 @@ def draw_line(img):
     y1 = int((k * x1 + d)[0])
     x2 = 2000
     y2 = int((k * x2 + d)[0])
-    cv.line(img, (x1, y1), (x2, y2), (0, 255, 0))
-    # 显示图像
-    cv.imshow('img', img)
-    cv.waitKey(0)
+    cv.line(img, (x1, y1), (x2, y2), color)
 
 
 if __name__ == '__main__':
-    img = cv.imread("reservoir/img_origin2.jpg",cv.IMREAD_COLOR)
-    draw_line(img)
+    # 读取图像
+    img = cv.imread("reservoir/img_origin2.jpg", cv.IMREAD_COLOR)
+    # 画出上线
+    up_lineParams = get_up_lineParams(img)
+    draw_line(img, up_lineParams,(0,0,255))
+    # 画出下线
+    down_lineParams = get_down_lineParams(img)
+    draw_line(img, down_lineParams,(0,255,0))
+    # 显示图像
+    cv.imshow('img', img)
+    cv.waitKey(0)

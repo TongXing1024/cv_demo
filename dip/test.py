@@ -190,10 +190,11 @@ def draw_up_line():
     # 转换成numpy数组
     up_points = np.array(up_points)
 
-
     print(up_points)
     # 对应元素相加,获取点在全图的位置
     up_points = np.add(up_points, up_roi_points[0])
+    # 取第二个到第四个点
+    up_points = up_points[1:4]
     # 把这些点拟合成直线
     up_lineParams = cv.fitLine(up_points, cv.DIST_L2, 0, 0.01, 0.01)
     a = up_lineParams[0]
@@ -214,50 +215,6 @@ def draw_up_line():
     # 显示图像
     cv.imshow('img', img)
     cv.waitKey(0)
-
-
-def draw_down_line():
-    global down_points
-    # 读取图像
-    img = cv.imread('reservoir/img_origin.jpg', cv.IMREAD_COLOR)
-    # 得到处理后ROI区域的点(左上，右下)
-    up_roi_points, down_roi_points = points_process()
-    # 得到裁剪后的图像
-    img_roi = get_roi(img, up_roi_points, down_roi_points)
-    img_roi = img_roi[0:5]
-    # 遍历图像，拿到下点
-    for i in range(len(img_roi)):
-        down_points.append(get_down_points(img_roi[i]))
-    # 转换成numpy数组
-    down_points = np.array(down_points)
-    print(down_points)
-    # 取前5个
-    up_roi_points = up_roi_points[0][0:5]
-    # 对应元素相加,获取点在全图的位置
-    down_points = np.add(down_points, up_roi_points)
-    # 画点
-    for i in range(len(down_points)):
-        cv.circle(img, (up_roi_points[i][0], up_roi_points[i][1]), 10, (0, 0, 255), 1)
-    cv.imshow('img', img)
-    cv.waitKey(0)
-    # # 把这些点拟合成直线
-    # down_lineParams = cv.fitLine(down_points, cv.DIST_L2, 0, 0.01, 0.01)
-    # a = down_lineParams[0]
-    # b = down_lineParams[1]  # (a,b)为直线的方向向量
-    # c = down_lineParams[2]
-    # d = down_lineParams[3]  # (c,d)为直线上的一点
-    # # 由方向向量和直线上的一点求直线的斜率
-    # k = b / a
-    # # 由方向向量和直线上的一点求直线的截距
-    # d = d - k * c
-    # print(f"故直线的方程为：y={k}x+{d}")
-    # # 随机取直线上的两点，画出直线
-    # x1 = 1
-    # y1 = int((k * x1 + d)[0])
-    # x2 = 2000
-    # y2 = int((k * x2 + d)[0])
-    # cv.line(img, (x1, y1), (x2, y2), (0, 255, 0))
-    # # 显示图像
 
 
 def get_down_points(img):
@@ -315,28 +272,71 @@ def get_down_points(img):
     return max_point
 
 
-if __name__ == '__main__':
+def draw_down_line():
+    global down_points
+    # 读取图像
     img = cv.imread('reservoir/img_origin.jpg', cv.IMREAD_COLOR)
+    # 得到处理后ROI区域的点(左上，右下)
     up_roi_points, down_roi_points = points_process()
+    # 得到裁剪后的图像
     img_roi = get_roi(img, up_roi_points, down_roi_points)
-    # 取前5个
+    # 取前5个，因为最后一个检测不到，而且会引入许多噪声
     img_roi = img_roi[0:5]
-    # 遍历图像并显示
+    # 得到下点
     for i in range(len(img_roi)):
         down_points.append(get_down_points(img_roi[i]))
     # 转换成numpy数组
     down_points = np.array(down_points)
-    print(f"down_points:{down_points}")
-    # 取前5个
+    # 对应上述前五个，这里也取前5个
     up_roi_points = up_roi_points[0][0:5]
-    print(f"up_roi_points:{up_roi_points}")
     # 对应元素相加,获取点在全图的位置
     down_points = np.add(down_points, up_roi_points)
-    print(f"add down_points:{down_points}")
-    # 画点
-    for i in range(len(down_points)):
-        print(f"down_points[i]:{down_points[i]}")
-        cv.circle(img, (down_points[i][0], down_points[i][1]), 10, (0, 0, 255), 1)
-    cv.namedWindow('img', cv.WINDOW_NORMAL)
+    # 取第二个到第四个点
+    down_points = down_points[1:4]
+    # 把这些点拟合成直线
+    down_lineParams = cv.fitLine(down_points, cv.DIST_L2, 0, 0.01, 0.01)
+    a = down_lineParams[0]
+    b = down_lineParams[1]  # (a,b)为直线的方向向量
+    c = down_lineParams[2]
+    d = down_lineParams[3]  # (c,d)为直线上的一点
+    # 由方向向量和直线上的一点求直线的斜率
+    k = b / a
+    # 由方向向量和直线上的一点求直线的截距
+    d = d - k * c
+    print(f"故直线的方程为：y={k}x+{d}")
+    # 随机取直线上的两点，画出直线
+    x1 = 1
+    y1 = int((k * x1 + d)[0])
+    x2 = 2000
+    y2 = int((k * x2 + d)[0])
+    cv.line(img, (x1, y1), (x2, y2), (0, 0, 255))
+    # 显示图像
     cv.imshow('img', img)
     cv.waitKey(0)
+
+if __name__ == '__main__':
+    draw_up_line()
+    # img = cv.imread('reservoir/img_origin.jpg', cv.IMREAD_COLOR)
+    # up_roi_points, down_roi_points = points_process()
+    # img_roi = get_roi(img, up_roi_points, down_roi_points)
+    # # 取前5个
+    # img_roi = img_roi[0:5]
+    # # 遍历图像并显示
+    # for i in range(len(img_roi)):
+    #     down_points.append(get_down_points(img_roi[i]))
+    # # 转换成numpy数组
+    # down_points = np.array(down_points)
+    # print(f"down_points:{down_points}")
+    # # 取前5个
+    # up_roi_points = up_roi_points[0][0:5]
+    # print(f"up_roi_points:{up_roi_points}")
+    # # 对应元素相加,获取点在全图的位置
+    # down_points = np.add(down_points, up_roi_points)
+    # print(f"add down_points:{down_points}")
+    # # 画点
+    # for i in range(len(down_points)):
+    #     print(f"down_points[i]:{down_points[i]}")
+    #     cv.circle(img, (down_points[i][0], down_points[i][1]), 10, (0, 0, 255), 1)
+    # cv.namedWindow('img', cv.WINDOW_NORMAL)
+    # cv.imshow('img', img)
+    # cv.waitKey(0)
