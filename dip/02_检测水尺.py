@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 import matplotlib
 import numpy as np
-from util.ImgProcess import ImageProcessC
+from scipy.optimize import fsolve
+import sympy as sp
 
 matplotlib.use('TkAgg')
 
@@ -14,13 +15,14 @@ matplotlib.use('TkAgg')
 up_points = []
 # 定义下点列表，存储真实下点
 down_points = []
-
-# 上点(检测到)
+# 上点(检测)
 x_up = [185, 543, 821, 1050, 1198, 1405]
 y_up = [512, 552, 566, 576, 571, 609]
-# 下点(检测到)
+# 下点(检测)
 x_down = [259, 603, 872, 1076, 1226, 1427]
 y_down = [749, 762, 749, 736, 742, 704]
+
+
 # 此函数用于获取灰度重心
 def get_gray_center_point(img):
     # 创建数组保存质心坐标
@@ -175,15 +177,17 @@ def get_up_points(img):
 
 
 def points_process():
+    global x_up, y_up, x_down, y_down
     """
     此函数拿到yolo检测到的点以后，对其进行处理，使其符合画矩形的要求，提取出感兴趣区域
     """
-    global x_up, y_up, x_down, y_down
     # 定义上点列表，存储ROI（感兴趣区域）左上点
     up_roi_points = []
     # 定义上点列表，存储ROI（感兴趣区域）右下点
     down_roi_points = []
+
     points_up = np.column_stack((x_up, y_up))  # 合并 [185,512]
+
     # 由于检测的坐标与真实的坐标有一定的偏差，所以需要对检测的坐标进行修正（下点的y坐标加30）
     y_down = [i + 30 for i in y_down]  # 下点的y坐标加30
     points_down = np.column_stack((x_down, y_down))
@@ -222,33 +226,13 @@ def get_roi(img, up_roi_points, down_roi_points):
     return img_roi
 
 
-def draw_up_points(img):
-    """
-    把检测到的点画在原图上
-    """
-    # 声明全局变量
-    global up_points
-    # 读取裁剪好的图像
-    img1 = cv.imread('reservoir/img_roi.jpg', cv.IMREAD_COLOR)
-    # 获取上点
-    up_points.append(get_up_points(img1))
-    # 对应元素相加,获取点在全图的位置
-    # up_points = np.add(up_points, up_roi_points)
-    print(up_points)
-    # 画点
-    cv.circle(img, (up_points[0][0], up_points[0][1]), 5, (0, 0, 255), 1)
-    # 显示图像
-    cv.imshow('img', img)
-    cv.waitKey(0)
-
-
 def get_up_lineParams(img):
     global up_points
     # 得到处理后ROI区域的点(左上，右下)
     up_roi_points, down_roi_points = points_process()
     # 得到裁剪后的图像
     img_roi = get_roi(img, up_roi_points, down_roi_points)
-    # 遍历图像，画上点
+    # 遍历图像，添加上点
     for i in range(len(img_roi)):
         up_points.append(get_up_points(img_roi[i]))
     # 转换成numpy数组
@@ -259,6 +243,11 @@ def get_up_lineParams(img):
     up_points = up_points[1:]
     # 把这些点拟合成直线
     up_lineParams = cv.fitLine(up_points, cv.DIST_L2, 0, 0.01, 0.01)
+    k = up_lineParams[1] / up_lineParams[0]
+    b = up_lineParams[3] - k * up_lineParams[2]
+    up_lineParams = [k[0], b[0]]
+    # 转换成numpy数组
+    up_lineParams = np.array(up_lineParams)
     # 返回直线参数
     return up_lineParams
 
@@ -284,8 +273,14 @@ def get_down_lineParams(img):
     down_points = down_points[1:4]
     # 把这些点拟合成直线
     down_line_Params = cv.fitLine(down_points, cv.DIST_L2, 0, 0.01, 0.01)
+    k = down_line_Params[1] / down_line_Params[0]
+    b = down_line_Params[3] - k * down_line_Params[2]
+    down_line_Params = [k[0], b[0]]
+    # 转换成numpy数组
+    down_line_Params = np.array(down_line_Params)
     # 返回直线参数
     return down_line_Params
+
 
 def get_boundary_lineParams(img):
     """
@@ -312,69 +307,130 @@ def get_boundary_lineParams(img):
     # 边缘检测
     edges = cv.Canny(binary, 100, 200)
     # 生成两个与原图像大小相同的全黑图像
-    new_img = np.zeros(edges.shape, np.uint8)
+    new_img1 = np.zeros(edges.shape, np.uint8)
+    new_img2 = np.zeros(edges.shape, np.uint8)
     # 裁剪
-    new_img[min_y_down:min_y_down + 100, :] = edges[min_y_down:min_y_down + 100, :]
+    new_img1[max_y_up - 50:max_y_up, :] = edges[max_y_up - 50:max_y_up, :]
+    new_img2[min_y_down:min_y_down + 100, :] = edges[min_y_down:min_y_down + 100, :]
     # 创建空numpy数组
     points = []
     # 遍历裁剪好的图像的每一行
+    for i in range(max_y_up - 100, max_y_up):
+        # 拿到每一行的非0点的坐标，而且y坐标最大的那个点
+        point = np.argwhere(new_img1[i, :] != 0)
+        if len(point) > 0:
+            point = point[np.lexsort(-point.T)][0]
+            points.append([i, point[0]])
     for i in range(min_y_down, min_y_down + 100):
         # 拿到每一行的非0点的坐标，而且y坐标最大的那个点
-        point = np.argwhere(new_img[i, :] != 0)
+        point = np.argwhere(new_img2[i, :] != 0)
         if len(point) > 0:
             point = point[np.lexsort(-point.T)][0]
             points.append([i, point[0]])
     # 转换成numpy数组
     points = np.array(points)
     # 将点画在图像上
-    for point in points:
-        cv.circle(img, (point[1], point[0]), 5, (255, 0, 255), -1)
+    # for point in points:
+    #     cv.circle(img, (point[1], point[0]), 5, (255, 0, 255), -1)
+
     # 交换第一列和第二列的位置
     points[:, [0, 1]] = points[:, [1, 0]]
-    # 拟合直线
-    line_params = cv.fitLine(points, cv.DIST_L2, 0, 0.01, 0.01)
-    return line_params
+    # 拟合曲线
+    params = np.polyfit(points[:, 0], points[:, 1], 2)
+    # print(f"曲线方程为：y={params[0]}x^2+{params[1]}x+{params[2]}")
+    # 画线
+    x = np.arange(0, 2000)
+    y = params[0] * x ** 2 + params[1] * x + params[2]
+    # plt.plot(x, y, 'r')
+    # 返回曲线参数
+    return params
 
-def draw_line(img, lineParams,color):
+
+# 定义一个包含两个非线性方程的函数,用于求交点
+def equations(x, k, b1, a, b2, c):
+    # 定义两个方程
+    eq1 = k * x[0] + b1 - x[1]
+    eq2 = a * x[0] ** 2 + b2 * x[0] + c - x[1]
+    return [eq1, eq2]
+
+
+def draw_straight_line(lineParams, color):
     """
     此函数用于画出直线
     img:原图
     lineParams:直线参数
     color:直线颜色
     """
-    a = lineParams[0]
-    b = lineParams[1]  # (a,b)为直线的方向向量
-    c = lineParams[2]
-    d = lineParams[3]  # (c,d)为直线上的一点
     # 由方向向量和直线上的一点求直线的斜率
-    k = b / a
+    k = lineParams[0]
     # 由方向向量和直线上的一点求直线的截距
-    d = d - k * c
-    print(lineParams)
-    print(f"y={k}x+{d}")
+    b = lineParams[1]
     # 随机取直线上的两点，画出直线
     x1 = 1
-    y1 = int((k * x1 + d)[0])
+    y1 = int((k * x1 + b))
     x2 = 2000
-    y2 = int((k * x2 + d)[0])
-    cv.line(img, (x1, y1), (x2, y2), color)
+    y2 = int((k * x2 + b))
+    # 画线
+    plt.plot([x1, x2], [y1, y2], color)
+
+
+def get_intersection_point(straight_lineParams, boundary_lineParams):
+    """
+    此函数用于获取两条直线的交点
+    params1:直线参数1
+    params2:曲线参数2
+    """
+    # 直线参数 y = kx + b
+    k = straight_lineParams[0]
+    b1 = straight_lineParams[1]
+    # print(f"直线方程为：y={k}x+{b1}")
+    # 曲线参数  y = ax^2 + bx + c
+    a, b2, c = boundary_lineParams[0], boundary_lineParams[1], boundary_lineParams[2]
+    # print(f"曲线方程为：y={a}x^2+{b2}x+{c}")
+    # 定义变量
+    x = sp.symbols('x')
+    # 合并同类项
+    eq_linear = a * x ** 2 + (b2 - k) * x + (c - b1)
+    solution_linear = sp.solve(eq_linear, x)
+    # 找到大于0的解
+    for i in range(len(solution_linear)):
+        if solution_linear[i] > 0:
+            solution_linear = solution_linear[i]
+            break
+    x = solution_linear
+    y = k * x + b1
+    intersection_point = np.array([x, y])
+    return intersection_point
+
+
+def draw_all_things(img):
+    # 拿到下点的直线参数
+    down_lineParams = get_down_lineParams(img)
+    draw_straight_line(down_lineParams, 'blue')
+    # 拿到上点的直线参数
+    up_lineParams = get_up_lineParams(img)
+    draw_straight_line(up_lineParams, 'green')
+    # 拿到水陆交界线的曲线参数
+    boundary_lineParams = get_boundary_lineParams(img)
+    # 画出水陆交界线
+    x = np.arange(0, 2000)
+    y = boundary_lineParams[0] * x ** 2 + boundary_lineParams[1] * x + boundary_lineParams[2]
+    # 拿到上线与水陆交界线的交点
+    up_intersection_point = get_intersection_point(up_lineParams, boundary_lineParams)
+    print(f"上线与水陆交界线的交点为：{up_intersection_point}")
+    # 拿到下线与水陆交界线的交点
+    down_intersection_point = get_intersection_point(down_lineParams, boundary_lineParams)
+    print(f"下线与水陆交界线的交点为：{down_intersection_point}")
+    # 画点
+    cv.circle(img, (int(up_intersection_point[0]), int(up_intersection_point[1])), 10, (255, 0, 255), -1)
+    cv.circle(img, (int(down_intersection_point[0]), int(down_intersection_point[1])), 10, (255, 0, 255), -1)
+    plt.plot(x, y, 'yellow')
+    plt.imshow(img[:, :, ::-1])
+    plt.show()
 
 
 if __name__ == '__main__':
     # 读取图像
-    img = cv.imread("reservoir/img_origin.jpg", cv.IMREAD_COLOR)
-    # 画出下线
-    down_lineParams = get_down_lineParams(img)
-    print("下线的方程为：")
-    draw_line(img, down_lineParams,(0,255,0))
-    # 画出上线
-    up_lineParams = get_up_lineParams(img)
-    print("上线的方程为：")
-    draw_line(img, up_lineParams, (0, 0, 255))
-    # 画出水陆交界线
-    boundary_lineParams = get_boundary_lineParams(img)
-    print("水陆交界线的方程为：")
-    draw_line(img, boundary_lineParams, (255, 0, 0))
-    # 显示图像
-    cv.imshow('img', img)
-    cv.waitKey(0)
+    img = cv.imread("reservoir/img_origin2.jpg", cv.IMREAD_COLOR)
+    draw_all_things(img)
+
