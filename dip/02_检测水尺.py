@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 import matplotlib
 import numpy as np
-from scipy.optimize import fsolve
 import sympy as sp
+from scipy.io import loadmat
 
 matplotlib.use('TkAgg')
 
@@ -15,13 +15,17 @@ matplotlib.use('TkAgg')
 up_points = []
 # 定义下点列表，存储真实下点
 down_points = []
-# 上点(检测)
-x_up = [185, 543, 821, 1050, 1198, 1405]
-y_up = [512, 552, 566, 576, 571, 609]
-# 下点(检测)
-x_down = [259, 603, 872, 1076, 1226, 1427]
-y_down = [749, 762, 749, 736, 742, 704]
-
+mat = loadmat('mat/points.mat')['points']
+x_up = mat[0]
+y_up = mat[1]
+x_down = mat[2]
+y_down = mat[3]
+# # 上点(检测)
+# x_up = [185, 543, 821, 1050, 1198, 1405]
+# y_up = [512, 552, 566, 576, 571, 609]
+# # 下点(检测)
+# x_down = [259, 603, 872, 1076, 1226, 1427]
+# y_down = [749, 762, 749, 736, 742, 704]
 
 # 此函数用于获取灰度重心
 def get_gray_center_point(img):
@@ -41,45 +45,7 @@ def get_gray_center_point(img):
     return center_point
 
 
-def get_Line():
-    """
-    获取水面与陆地交界处的直线
-    使用霍夫变换的方法
-    :return:
-    """
-    # 读取图像
-    img_origin = cv.imread('reservoir/shending.jpg', cv.IMREAD_COLOR)
-    # 裁剪
-    # img = img_origin[200:1000, 2000:]
-    img = img_origin[600:1000, 2000:]
-    # 转换为灰度图
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    # 高斯滤波
-    blur = cv.GaussianBlur(gray, (3, 3), 0)
-    # 边缘检测
-    edges = cv.Canny(blur, 100, 200)
-    lines = cv.HoughLines(edges, 0.8, np.pi / 180, 145)
-    print(lines[0])
-    # 将检测的线绘制在图像上
-    for line in lines:
-        rho, theta = line[0]
-        print(rho, theta)
-        a = np.cos(theta)
-        b = np.sin(theta)
-        x0 = a * rho
-        y0 = b * rho
-        # 画点
-        x1 = int(x0 + 1000 * (-b))
-        y1 = int(y0 + 1000 * (a))
-        x2 = int(x0 - 1000 * (-b))
-        y2 = int(y0 - 1000 * (a))
-        # k = (y2 - y1) / (x2 - x1)
-        cv.line(img, (x1, y1), (x2, y2), (0, 255, 0))
-    # 显示图像
-    plt.subplot(121)
-    plt.imshow(img[:, :, ::-1])
-    plt.title('img')
-    plt.show()
+
 
 
 def get_down_points(img):
@@ -346,14 +312,6 @@ def get_boundary_lineParams(img):
     return params
 
 
-# 定义一个包含两个非线性方程的函数,用于求交点
-def equations(x, k, b1, a, b2, c):
-    # 定义两个方程
-    eq1 = k * x[0] + b1 - x[1]
-    eq2 = a * x[0] ** 2 + b2 * x[0] + c - x[1]
-    return [eq1, eq2]
-
-
 def draw_straight_line(lineParams, color):
     """
     此函数用于画出直线
@@ -368,7 +326,7 @@ def draw_straight_line(lineParams, color):
     # 随机取直线上的两点，画出直线
     x1 = 1
     y1 = int((k * x1 + b))
-    x2 = 2000
+    x2 = 2300
     y2 = int((k * x2 + b))
     # 画线
     plt.plot([x1, x2], [y1, y2], color)
@@ -402,6 +360,21 @@ def get_intersection_point(straight_lineParams, boundary_lineParams):
     intersection_point = np.array([x, y])
     return intersection_point
 
+def process_boundary_line(img):
+    """
+    此函数由交点画出直线
+    """
+    up_lineParams = get_up_lineParams(img)
+    down_lineParams = get_down_lineParams(img)
+    boundary_lineParams = get_boundary_lineParams(img)
+    up_intersection_point = get_intersection_point(up_lineParams, boundary_lineParams)
+    down_intersection_point = get_intersection_point(down_lineParams, boundary_lineParams)
+    # 由直线上两点求直线的斜率
+    k = (up_intersection_point[1] - down_intersection_point[1]) / (up_intersection_point[0] - down_intersection_point[0])
+    # 由直线上两点求直线的截距
+    b = up_intersection_point[1] - k * up_intersection_point[0]
+    print(k)
+    print(b)
 
 def draw_all_things(img):
     # 拿到下点的直线参数
@@ -415,22 +388,34 @@ def draw_all_things(img):
     # 画出水陆交界线
     x = np.arange(0, 2000)
     y = boundary_lineParams[0] * x ** 2 + boundary_lineParams[1] * x + boundary_lineParams[2]
+    plt.plot(x, y, 'yellow')
     # 拿到上线与水陆交界线的交点
     up_intersection_point = get_intersection_point(up_lineParams, boundary_lineParams)
     print(f"上线与水陆交界线的交点为：{up_intersection_point}")
     # 拿到下线与水陆交界线的交点
     down_intersection_point = get_intersection_point(down_lineParams, boundary_lineParams)
     print(f"下线与水陆交界线的交点为：{down_intersection_point}")
-    # 画点
+    # 画交点
     cv.circle(img, (int(up_intersection_point[0]), int(up_intersection_point[1])), 10, (255, 0, 255), -1)
     cv.circle(img, (int(down_intersection_point[0]), int(down_intersection_point[1])), 10, (255, 0, 255), -1)
-    plt.plot(x, y, 'yellow')
+
+    # # 根据交点求直线方程
+    # k = (up_intersection_point[1] - down_intersection_point[1]) / (up_intersection_point[0] - down_intersection_point[0])
+    # b = up_intersection_point[1] - k * up_intersection_point[0]
+    # print(f"水陆交界线的直线方程为：y={k}x+{b}")
+    # # 画出水陆交界线
+    # x = np.arange(0, 2000)
+    # y = k * x + b
+    # plt.plot(x, y, 'red')
     plt.imshow(img[:, :, ::-1])
     plt.show()
 
+def video_process(video):
+    pass
 
 if __name__ == '__main__':
     # 读取图像
     img = cv.imread("reservoir/img_origin2.jpg", cv.IMREAD_COLOR)
+    # process_boundary_line(img)
     draw_all_things(img)
 
