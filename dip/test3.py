@@ -46,7 +46,7 @@ def get_boundary_lineParams(img):
     # # 显示
     # cv.namedWindow("image", cv.WINDOW_NORMAL)
     # cv.imshow("image", img)
-    # cv.waitKey(0)
+    # cv.waitKey(0).
     # 交换第一列和第二列的位置
     points[:, [0, 1]] = points[:, [1, 0]]
     # print(points)
