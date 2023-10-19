@@ -4,8 +4,6 @@ import math
 import sympy as sp
 import numpy as np
 from scipy.optimize import fsolve
-from sympy.core.evalf import evalf
-
 
 # 定义一个包含两个非线性方程的函数
 def equations(x, k, b1, a, b2, c):
@@ -35,7 +33,7 @@ def get_intersection_point2(straight_lineParams,boundary_lineParams):
     return intersection_point
 def get_intersection_point(straight_lineParams,boundary_lineParams):
     """
-    此函数用于获取两条直线的交点
+    此函数用于获取直线和曲线的交点
     params1:直线参数1
     params2:曲线参数2
     """

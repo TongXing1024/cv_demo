@@ -83,6 +83,8 @@ def draw(img):
         cv.line(img, (0, int(b1)), (img.shape[1], int(k1 * img.shape[1] + b1)), (0, 0, 255), 3)
         cv.line(img, (0, int(b2)), (img.shape[1], int(k2 * img.shape[1] + b2)), (0, 255,0 ), 3)
         cv.line(img, (0, int(params[1])), (img.shape[1], int(params[0] * img.shape[1] + params[1])), (255, 0, 255), 3)
+        # 保存视频
+        
         cv.namedWindow("image", cv.WINDOW_NORMAL)
         cv.imshow("image", img)
         c = cv.waitKey(50)

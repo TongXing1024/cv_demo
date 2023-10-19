@@ -8,8 +8,15 @@ import matplotlib
 import numpy as np
 import sympy as sp
 from scipy.io import loadmat
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import filedialog
 
 matplotlib.use('TkAgg')
+# 定义水准点D0
+D0 = None
+# 定义相邻水尺间距Δ
+deerta = None  # 水准点D0和相邻水尺间距Δ 由输入框人工提供
 
 # 定义上点列表，存储真实上点
 up_points = []
@@ -20,6 +27,8 @@ x_up = mat[0]
 y_up = mat[1]
 x_down = mat[2]
 y_down = mat[3]
+
+
 # # 上点(检测)
 # x_up = [185, 543, 821, 1050, 1198, 1405]
 # y_up = [512, 552, 566, 576, 571, 609]
@@ -43,9 +52,6 @@ def get_gray_center_point(img):
     cY = int(M["m01"] / M["m00"])
     center_point.append([cX, cY])
     return center_point
-
-
-
 
 
 def get_down_points(img):
@@ -103,7 +109,7 @@ def get_up_points(img):
     """
     此函数用于获取水尺上的点
     img:裁剪好的图像
-    返回值：水尺上的点
+    返回值：水尺上点
     """
     # 读取裁剪好的图像
     # img = cv.imread('reservoir/img555.jpg', cv.IMREAD_COLOR)
@@ -184,11 +190,6 @@ def get_roi(img, up_roi_points, down_roi_points):
         # 裁剪
         img_roi.append(
             img[up_roi_points[0][i][1]:down_roi_points[0][i][1], up_roi_points[0][i][0]:down_roi_points[0][i][0]])
-    # 显示裁剪后的图像
-    # for i in range(len(img_roi)):
-    #     cv.imshow('img_roi', img_roi[i])
-    #     cv.waitKey(0)
-    #     cv.destroyAllWindows()
     return img_roi
 
 
@@ -334,7 +335,7 @@ def draw_straight_line(lineParams, color):
 
 def get_intersection_point(straight_lineParams, boundary_lineParams):
     """
-    此函数用于获取两条直线的交点
+    此函数用于求出直线与曲线的交点
     params1:直线参数1
     params2:曲线参数2
     """
@@ -360,23 +361,112 @@ def get_intersection_point(straight_lineParams, boundary_lineParams):
     intersection_point = np.array([x, y])
     return intersection_point
 
-def process_boundary_line(img):
-    """
-    此函数由交点画出直线
-    """
-    up_lineParams = get_up_lineParams(img)
-    down_lineParams = get_down_lineParams(img)
-    boundary_lineParams = get_boundary_lineParams(img)
-    up_intersection_point = get_intersection_point(up_lineParams, boundary_lineParams)
-    down_intersection_point = get_intersection_point(down_lineParams, boundary_lineParams)
-    # 由直线上两点求直线的斜率
-    k = (up_intersection_point[1] - down_intersection_point[1]) / (up_intersection_point[0] - down_intersection_point[0])
-    # 由直线上两点求直线的截距
-    b = up_intersection_point[1] - k * up_intersection_point[0]
-    print(k)
-    print(b)
 
-def draw_all_things(img):
+def has_chinese_characters(text):
+    """
+    判断是否含有中文
+    :param text:
+    :return:
+    """
+    for char in text:
+        if '\u4e00' <= char <= '\u9fff':
+            return True
+    return False
+
+
+def select_file_dialog():
+    """
+    此函数用于选择图片路径
+    :return: 图片路径、字符串形式
+    """
+    tk.messagebox.showinfo("提示", "请选择水尺图片")
+    file_path = filedialog.askopenfilename()
+    if file_path:
+        if has_chinese_characters(file_path):
+            # 文件路径包含中文字符，弹出警告对话框
+            tk.messagebox.showwarning("警告", "所选文件路径包含中文字符，请把文件放入英文文件夹下边")
+        return file_path
+    else:
+        return None
+
+
+def open_input_dialog():
+    """
+    此函数用于打开输入窗口,输入水尺高程D0和相邻水尺间距Δ
+    """
+
+    def submit():
+        global D0, deerta
+        try:
+            D0 = float(entry1.get())
+            deerta = float(entry2.get())
+            # 关闭窗口
+            root.destroy()
+        except ValueError:
+            messagebox.showerror("错误", "请输入有效的数字")
+
+    # 创建主窗口
+    root = tk.Tk()
+    root.title("输入窗口")
+
+    # 创建标签和输入框1
+    label1 = tk.Label(root, text="请输入水尺高程D0，厘米cm为单位：")
+    label1.pack()
+    entry1 = tk.Entry(root)
+    entry1.pack()
+
+    # 创建标签和输入框2
+    label2 = tk.Label(root, text="请输入相邻水尺的间距Δ，厘米cm为单位：")
+    label2.pack()
+    entry2 = tk.Entry(root)
+    entry2.pack()
+
+    # 创建提交按钮
+    submit_button = tk.Button(root, text="提交", command=submit)
+    submit_button.pack()
+
+    # 设置窗口大小和位置
+    root.geometry("300x200+500+200")
+    # 进入主循环
+    root.mainloop()
+
+
+def get_points_distance(point1, point2):
+    """
+    此函数计算两点之间的距离
+    """
+    return np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
+
+
+def get_water_level(D0, deerta):
+    """
+    d = D0 - Δ*(i - 1 - l/T)
+    """
+    global x_down, y_down
+    # 水尺个数
+    i = len(x_down)
+    # 合并上下点
+    points = np.column_stack((x_down, y_down))
+    # 取出倒数第二个
+    points1 = points[-2]
+    # 取出倒数第三个
+    points2 = points[-3]
+    # 计算两点之间的距离T
+    T = get_points_distance(points1, points2)
+    print(T)
+
+
+
+def draw_all_things(img, D0, deerta):
+    global x_down, y_down
+    # 水尺个数
+    i = len(x_down)
+    # 合并上下点
+    points = np.column_stack((x_down, y_down))
+    # 取出倒数第二个
+    points1 = points[-2]
+    # 取出倒数第三个
+    points2 = points[-3]
     # 拿到下点的直线参数
     down_lineParams = get_down_lineParams(img)
     draw_straight_line(down_lineParams, 'blue')
@@ -389,33 +479,37 @@ def draw_all_things(img):
     x = np.arange(0, 2000)
     y = boundary_lineParams[0] * x ** 2 + boundary_lineParams[1] * x + boundary_lineParams[2]
     plt.plot(x, y, 'yellow')
-    # 拿到上线与水陆交界线的交点
-    up_intersection_point = get_intersection_point(up_lineParams, boundary_lineParams)
-    print(f"上线与水陆交界线的交点为：{up_intersection_point}")
     # 拿到下线与水陆交界线的交点
     down_intersection_point = get_intersection_point(down_lineParams, boundary_lineParams)
-    print(f"下线与水陆交界线的交点为：{down_intersection_point}")
+    print("下点交点：", down_intersection_point)
+    # 四舍五入取整
+    down_intersection_point = np.array(down_intersection_point, dtype=np.float32)
+    down_intersection_point = np.round(down_intersection_point)
+    # 计算相邻两直线之间的距离T
+    T = get_points_distance(points1, points2)
+    print(f"相邻两直线之间的距离T为：{T}")
+    # 计算交点到水尺距离l
+    l = get_points_distance(down_intersection_point, points1)
+    print("距离：", l)
+    # 计算水位
+    d = D0 - deerta * (i - 1 - l / T)
+    print("D0:", D0)
+    print("deerta:", deerta)
+    print(f"水位为：{d}")
+    # 在图片上写字
+    cv.putText(img, f"water_level:{d}cm", (100,100), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
     # 画交点
-    cv.circle(img, (int(up_intersection_point[0]), int(up_intersection_point[1])), 10, (255, 0, 255), -1)
     cv.circle(img, (int(down_intersection_point[0]), int(down_intersection_point[1])), 10, (255, 0, 255), -1)
-
-    # # 根据交点求直线方程
-    # k = (up_intersection_point[1] - down_intersection_point[1]) / (up_intersection_point[0] - down_intersection_point[0])
-    # b = up_intersection_point[1] - k * up_intersection_point[0]
-    # print(f"水陆交界线的直线方程为：y={k}x+{b}")
-    # # 画出水陆交界线
-    # x = np.arange(0, 2000)
-    # y = k * x + b
-    # plt.plot(x, y, 'red')
     plt.imshow(img[:, :, ::-1])
     plt.show()
 
-def video_process(video):
-    pass
 
 if __name__ == '__main__':
-    # 读取图像
-    img = cv.imread("reservoir/img_origin2.jpg", cv.IMREAD_COLOR)
-    # process_boundary_line(img)
-    draw_all_things(img)
-
+    open_input_dialog()
+    # # 选择图片
+    # selected_file = select_file_dialog()
+    # # 读取图像
+    # img = cv.imread(selected_file, cv.IMREAD_COLOR)
+    # 画出所有的东西
+    img = cv.imread('reservoir/img_origin2.jpg', cv.IMREAD_COLOR)
+    draw_all_things(img, D0, deerta)
